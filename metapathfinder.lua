@@ -337,6 +337,8 @@ function Pathfinder:getClosed()
 	return self._closed
 end
 
+-- Pathfinder:start documented at end of file
+
 local is_hooked = false
 local running = {}
 
@@ -482,6 +484,10 @@ local function HookThink()
 
 	is_hooked = true
 end
+
+-- function: Starts the pathfinder with the configured settings
+-- arguments: nil
+-- returns: nil
 
 function Pathfinder:start()
 	table.insert( running, self )
