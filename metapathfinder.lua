@@ -167,7 +167,7 @@ Pathfinder.__index = Pathfinder
 -- returns: Pathfinder object
 
 function Pathfinder:new( v, v2 )
-	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function() print( "Pathfinder stuck!" ) end }
+	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 10, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end }
 	return metatable( m, Pathfinder )
 end
 
@@ -193,7 +193,7 @@ function Pathfinder:setFinishFunc( func )
 end
 
 -- function: Sets callback function which is called when the pathfinder gets stuck
--- arguments: function to call
+-- arguments: function which is valled with one argument, which is a table of vectors (or an empty table at times) which is a partial path leading to the lowest fcost node
 -- returns: Pathfinder object to allow chaining functions
 
 function Pathfinder:setStuckFunc( func )
@@ -321,6 +321,23 @@ function Pathfinder:getAvoidWater()
 	return self._avoidwater
 end
 
+-- function: Sets how far the pathfinder can drop down something, drop height you input * step size for pathfinder = amount it's willing to fall
+-- arguments: number
+-- returns: Pathfinder object to allow chaining functions
+
+function Pathfinder:setDropHeight( num )
+	self._dropheight = num
+	return self
+end
+
+-- function: Gets how far the pathfinder can drop down something
+-- arguments: nil
+-- returns: number
+
+function Pathfinder:getDropHeight()
+	return self._dropheight
+end
+
 -- function: Internal function used in the pathing process which gets the open table in the form of a binary heap
 -- arguments: nil
 -- returns: binary heap
@@ -388,7 +405,23 @@ local function HookThink()
 				local parent = open:pop()
 				if !parent then
 					table.remove( running, u )
-					path._stkcallback()
+					local btnode
+					local lowf = math.huge
+					for i = 1, #closed do
+						local node = closed[i]
+						if node:getFcost() < lowf then
+							btnode = node
+							lowf = node:getFcost()
+						end
+					end
+					local pathnodes = {}
+					if btnode then
+						while btnode != closed[1] do
+							table.insert( pathnodes, 1, btnode:getPos() )
+							btnode = btnode:getParent()
+						end
+					end
+					path._stkcallback( pathnodes )
 					break
 				end
 				closed[ #closed + 1 ] = parent
@@ -397,11 +430,14 @@ local function HookThink()
 				local breakout = false
 				for i = 1, #groundnodes do
 					local pos = groundnodes[i] * gsize + ppos
-					local down = util.TraceHull( { mins = Vector( min.x, min.y, 0 ), maxs = Vector( max.x, max.y, 0 ), start = pos + svec, endpos = pos - svec * 2, mask = mask, filter = filter } )
+					local down = util.TraceHull( { mins = Vector( min.x, min.y, 0 ), maxs = Vector( max.x, max.y, 0 ), start = pos + svec, endpos = pos - svec * path:getDropHeight(), mask = mask, filter = filter } )
 					-- if down.MatType == MAT_SNOW then cost = cost + 5 end
 					if !down.Hit then continue end
 					if down.StartSolid then continue end
-					local child = Node( down.HitPos )
+					if math.NormalizeAngle( down.HitNormal:Angle().p ) >= -44 then continue end
+					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then continue end
+					-- ^ is here so that it doesn't get too close to an edge
+					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
 					child:setParent( parent )
 					down = nil
@@ -454,10 +490,6 @@ local function HookThink()
 						end
 						retry.maxs = old
 					end
-					local tr = util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x * 0.5, min.y * 0.5, 0 ), maxs = Vector( max.x * 0.5, max.y * 0.5, 0 ), mask = mask, filter = filter } )
-					if !tr.Hit then continue end
-					if math.NormalizeAngle( tr.HitNormal:Angle().p ) >= -44 then continue end
-					tr = nil
 					open:push( child )
 					local vec = Vector( floor( pos.x ), floor( pos.y ), floor( pos.z ) )
 					for i = -step * 2, step do
