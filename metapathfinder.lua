@@ -442,16 +442,18 @@ local function HookThink()
 					child:setParent( parent )
 					down = nil
 					local cost = speccosts[i] or 0
+					local p = parent:getParent()
+					if p then
+						local pd = p:getPos() - ppos
+						local d = ppos - pos
+						if pd.x != d.x or pd.y != d.y then print( "shit" ) cost = cost + 10 end -- penalize direction changes
+					end
+					p = nil
 					cost = cost + weight + parent:getGcost()
 					child:setGcost( cost )
 					child:setHcost( manhattanH( pos, target ) )
 					child:setFcost()
 					cost = nil -- saves memory maybe?
-					if #open > 1 then
-						local pd = parent:getParent():getPos() - ppos
-						local d = ppos - pos
-						if pd.x != d.x or pd.y != d.y then speccost = speccost + 10 end -- penalize direction changes
-					end
 					if util.TraceHull( { mins = min, maxs = max, start = pos, endpos = pos, mask = mask, filter = filter } ).Hit then continue end
 					if path:getAvoidWater() and util.TraceLine( { start = pos + Vector( 0, 0, 40 ), endpos = pos + Vector( 0, 0, max.z ), mask = MASK_WATER, filter = filter } ).Hit then continue end
 					local take = path._taken[ tostring( child ) ]
