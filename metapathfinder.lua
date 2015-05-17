@@ -446,7 +446,7 @@ local function HookThink()
 					if p then
 						local pd = p:getPos() - ppos
 						local d = ppos - pos
-						if pd.x != d.x or pd.y != d.y then print( "shit" ) cost = cost + 10 end -- penalize direction changes
+						if pd.x != d.x or pd.y != d.y then cost = cost + 10 end -- penalize direction changes
 					end
 					p = nil
 					cost = cost + weight + parent:getGcost()
