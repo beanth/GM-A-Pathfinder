@@ -431,6 +431,7 @@ local function HookThink()
 						end
 					end
 					path._stkcallback( pathnodes )
+					table.Empty( path )
 					break
 				end
 				closed[ #closed + 1 ] = parent
@@ -448,7 +449,7 @@ local function HookThink()
 					pos = child:getPos()
 					local cost = speccosts[i] or 0
 					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then
-						cost = cost + 50
+						cost = cost + 100
 					end
 					-- ^ is here so that it doesn't get too close to an edge
 					child:setParent( parent )
@@ -518,6 +519,7 @@ local function HookThink()
 						btnode = btnode:getParent()
 					end
 					path._fincallback( pathnodes )
+					table.Empty( path )
 					table.remove( running, u )
 					breakout = true
 					break
