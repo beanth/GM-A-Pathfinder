@@ -67,8 +67,17 @@ function Node:getClosed()
 	return self._closed or false
 end
 
-local function manhattanH( v, v2 )
-	return math.abs( v.x - v2.x ) + math.abs( v.y - v2.y ) + math.abs( v.z - v2.z )
+local function euclideanH( v, v2 )
+	return v:Distance( v2 )
+	-- I assume that the engine function will perform faster than doing the arithmetic in lua, please correct me if I'm wrong
+	/*
+	local deltaX = v2.x - v.x
+	local deltaY = v2.y - v.y
+	local deltaZ = v2.z - v.z
+	-- shamelessly copied from some stackoverflow post
+	return math.sqrt( deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ )
+	*/
+	-- return math.abs( v.x - v2.x ) + math.abs( v.y - v2.y ) + math.abs( v.z - v2.z )
 end
 
 function Node:getPos()
@@ -167,7 +176,7 @@ Pathfinder.__index = Pathfinder
 -- returns: Pathfinder object
 
 function Pathfinder:new( v, v2 )
-	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 10, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end }
+	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end }
 	return metatable( m, Pathfinder )
 end
 
@@ -435,10 +444,10 @@ local function HookThink()
 					if !down.Hit then continue end
 					if down.StartSolid then continue end
 					if math.NormalizeAngle( down.HitNormal:Angle().p ) >= -44 then continue end
-					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then continue end
-					-- ^ is here so that it doesn't get too close to an edge
 					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
+					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then continue end
+					-- ^ is here so that it doesn't get too close to an edge
 					child:setParent( parent )
 					down = nil
 					local cost = speccosts[i] or 0
@@ -451,7 +460,7 @@ local function HookThink()
 					p = nil
 					cost = cost + weight + parent:getGcost()
 					child:setGcost( cost )
-					child:setHcost( manhattanH( pos, target ) )
+					child:setHcost( euclideanH( pos, target ) )
 					child:setFcost()
 					cost = nil -- saves memory maybe?
 					if util.TraceHull( { mins = min, maxs = max, start = pos, endpos = pos, mask = mask, filter = filter } ).Hit then continue end
