@@ -446,11 +446,13 @@ local function HookThink()
 					if math.NormalizeAngle( down.HitNormal:Angle().p ) >= -44 then continue end
 					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
-					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then continue end
+					local cost = speccosts[i] or 0
+					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then
+						cost = cost + 50
+					end
 					-- ^ is here so that it doesn't get too close to an edge
 					child:setParent( parent )
 					down = nil
-					local cost = speccosts[i] or 0
 					local p = parent:getParent()
 					if p then
 						local pd = p:getPos() - ppos
