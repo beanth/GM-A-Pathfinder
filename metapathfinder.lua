@@ -9,10 +9,7 @@ Node.__tostring = function( tab )
 	return floor( vec.x ) .. "," .. floor( vec.y ) .. "," .. floor( vec.z )
 end
 
-function Node:new( ... )
-	local tab = { ... }
-	local pos = tab[1]
-	if type( tab[1] ) == "number" then pos = Vector( tab[1], tab[2], tab[3] ) end
+function Node:new( pos )
 	return metatable( { _pos = pos }, Node )
 end
 
@@ -68,7 +65,7 @@ function Node:getClosed()
 end
 
 local function euclideanH( v, v2 )
-	return v:Distance( v2 )
+	return v:DistToSqr( v2 )
 	-- I assume that the engine function will perform faster than doing the arithmetic in lua, please correct me if I'm wrong
 	/*
 	local deltaX = v2.x - v.x
@@ -78,6 +75,19 @@ local function euclideanH( v, v2 )
 	return math.sqrt( deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ )
 	*/
 	-- return math.abs( v.x - v2.x ) + math.abs( v.y - v2.y ) + math.abs( v.z - v2.z )
+end
+
+local function snapTo( grid, num, func )
+	return func( num / grid ) * grid
+end
+
+local vmet = FindMetaTable( "Vector" )
+
+function vmet:snapTo( grid, ... )
+	local func = ( {...} or {} )[1] or math.Round
+	local vec = Vector( snapTo( grid, self.x, func ), snapTo( grid, self.y, func ), /*snapTo( grid, self.z, func )*/self.z )
+	//self.x, self.y/*, self.z*/ = vec.x, vec.y//, vec.z
+	return vec
 end
 
 function Node:getPos()
@@ -363,6 +373,36 @@ function Pathfinder:getClosed()
 	return self._closed
 end
 
+function Pathfinder:findWalkablePosition( vec )
+	local min = self:getHullMin()
+	local max = self:getHullMax()
+	local mask = self:getMask()
+	local gsize = self:getGridSize()
+	local filter = player.GetAll()
+	local svec = Vector( 0, 0, self:getStepSize() )
+	local attempts = {
+		vec:snapTo( gsize ),
+		vec:snapTo( gsize, floor ),
+		vec:snapTo( gsize, math.ceil ),
+		Vector( snapTo( gsize, vec.x, math.floor ), snapTo( gsize, vec.y, math.Round ), vec.z  ),
+		Vector( snapTo( gsize, vec.x, math.ceil ), snapTo( gsize, vec.y, math.Round ), vec.z  ),
+		Vector( snapTo( gsize, vec.x, math.Round ), snapTo( gsize, vec.y, math.floor ), vec.z  ),
+		Vector( snapTo( gsize, vec.x, math.Round ), snapTo( gsize, vec.y, math.ceil ), vec.z  ),
+		Vector( snapTo( gsize, vec.x, math.floor ), snapTo( gsize, vec.y, math.ceil ), vec.z  ),
+		Vector( snapTo( gsize, vec.x, math.ceil ), snapTo( gsize, vec.y, math.floor ), vec.z  ),
+	}
+	for i = 1, #attempts do
+		local pos = attempts[i]
+		local down = util.TraceHull( { mins = Vector( min.x, min.y, 0 ), maxs = Vector( max.x, max.y, 0 ), start = pos + svec, endpos = pos - svec * self:getDropHeight(), mask = mask, filter = filter } ) 
+		if !down.Hit then continue end
+		if down.StartSolid then continue end
+		pos = down.HitPos
+		if util.TraceHull( { mins = min, maxs = max, start = pos, endpos = pos, mask = mask, filter = filter } ).Hit then continue end
+		vec.x, vec.y, vec.z = pos.x, pos.y, pos.z
+		return pos
+	end
+end
+
 -- Pathfinder:start documented at end of file
 
 local is_hooked = false
@@ -408,7 +448,10 @@ local function HookThink()
 			local filter = getall
 			local weight = path:getWeight()
 			local svec = Vector( 0, 0, step )
-			for _ = 1, accel do
+			local dropheight = path:getDropHeight()
+			local nodecount = 0
+			local bsize = math.abs( min.x ) + max.x -- this assumes that the hull is square shaped two dimensionally
+			while nodecount <= accel do
 				local open = path:getOpen()
 				local closed = path:getClosed()
 				local parent = open:pop()
@@ -436,15 +479,16 @@ local function HookThink()
 				end
 				closed[ #closed + 1 ] = parent
 				parent:setClosed( true )
+				parent:setHcost( nil )
 				local ppos = parent:getPos()
 				local breakout = false
 				for i = 1, #groundnodes do
 					local pos = groundnodes[i] * gsize + ppos
-					local down = util.TraceHull( { mins = Vector( min.x, min.y, 0 ), maxs = Vector( max.x, max.y, 0 ), start = pos + svec, endpos = pos - svec * path:getDropHeight(), mask = mask, filter = filter } )
+					local down = util.TraceHull( { mins = Vector( min.x, min.y, 0 ), maxs = Vector( max.x, max.y, 0 ), start = pos + svec, endpos = pos - svec * dropheight, mask = mask, filter = filter } )
 					-- if down.MatType == MAT_SNOW then cost = cost + 5 end
 					if !down.Hit then continue end
 					if down.StartSolid then continue end
-					if math.NormalizeAngle( down.HitNormal:Angle().p ) >= -44 then continue end
+					if down.HitNormal.z < 0.7 /*math.NormalizeAngle( down.HitNormal:Angle().p ) >= -44*/ then continue end
 					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
 					local cost = speccosts[i] or 0
@@ -484,33 +528,31 @@ local function HookThink()
 						end
 						continue
 					end
-					do
-						local retry = { start = pos, endpos = ppos, mask = mask, filter = filter, mins = min, maxs = max }
-						local old = retry.maxs
-						retry.maxs = retry.maxs - svec
-						retry.start = pos + svec
+					if bsize > gsize then
+						local retry = { start = pos + svec, endpos = ppos, mask = mask, filter = filter, mins = min, maxs = max - svec }
 						if util.TraceHull( retry ).Hit then
 							retry.start = pos
 							retry.endpos = ppos + svec
 							if util.TraceHull( retry ).Hit then
-								retry.maxs = old
-								if math.abs( ppos.z - pos.z ) <= step then continue end -- don't go into falloff detection unless the node is actually a dropoff
-								retry.start = ppos
-								retry.endpos = Vector( pos.x, pos.y, ppos.z )
-								if util.TraceHull( retry ).Hit then -- falloff detection
-									continue
-								end
+								continue
 							end
 						end
-						retry.maxs = old
 					end
+					if math.abs( ppos.z - pos.z ) > step then
+						local retry = { start = ppos, endpos = Vector( pos.x, pos.y, ppos.z ), mask = mask, filter = filter, mins = min, maxs = max - svec }
+						if util.TraceHull( retry ).Hit then -- falloff detection
+							continue
+						end
+					end
+					nodecount = nodecount + 1
 					open:push( child )
 					local vec = Vector( floor( pos.x ), floor( pos.y ), floor( pos.z ) )
-					for i = -step * 2, step do
+					for i = -step, step do
 						local vec = Vector( vec.x, vec.y, vec.z + i )
-						path._taken[vec.x .. "," .. vec.y .. "," .. vec.z] = child
+						path._taken[ vec.x .. "," .. vec.y .. "," .. vec.z ] = child
 					end
-					if child:getHcost() > gsize * 2 then continue end
+					vec = path:getTarget()
+					if vec.x != pos.x or vec.y != pos.y or math.abs( vec.z - pos.z ) > step * dropheight then continue end
 					local btnode = parent
 					local pathnodes = {}
 					table.insert( pathnodes, target )
@@ -537,6 +579,13 @@ end
 -- returns: nil
 
 function Pathfinder:start()
+	self:findWalkablePosition( self._open._t[1]._pos )
+	self:findWalkablePosition( self._target )
 	table.insert( running, self )
 	if !is_hooked then HookThink() end
+end
+
+function Pathfinder:stop()
+	table.remove( running, table.KeyFromValue( self ) )
+	table.Empty( self )
 end
