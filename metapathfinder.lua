@@ -186,7 +186,7 @@ Pathfinder.__index = Pathfinder
 -- returns: Pathfinder object
 
 function Pathfinder:new( v, v2 )
-	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end }
+	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end, _filter = function( ent ) return !ent:IsPlayer() end }
 	return metatable( m, Pathfinder )
 end
 
@@ -208,6 +208,15 @@ end
 
 function Pathfinder:setFinishFunc( func )
 	self._fincallback = func
+	return self
+end
+
+-- function: Sets filter used in pathing process
+-- arguments: filter function/table/entity to be used to ignore in traces
+-- returns: Pathfinder object to allow chaining functions
+
+function Pathfinder:setFilter( func )
+	self._filter = func
 	return self
 end
 
@@ -378,7 +387,7 @@ function Pathfinder:findWalkablePosition( vec )
 	local max = self:getHullMax()
 	local mask = self:getMask()
 	local gsize = self:getGridSize()
-	local filter = player.GetAll()
+	local filter = self._filter
 	local svec = Vector( 0, 0, self:getStepSize() )
 	local attempts = {
 		vec:snapTo( gsize ),
@@ -435,7 +444,6 @@ local function HookThink()
 	hook.Add( "Think", "DoPathfinding", function()
 		local count = #running
 		if count < 1 then UnHookThink() return end
-		local getall = player.GetAll()
 		local accel = math.ceil( 30/count )
 		for u, v in pairs( running ) do
 			local path = v
@@ -445,7 +453,7 @@ local function HookThink()
 			local gsize = path:getGridSize()
 			local step = path:getStepSize()
 			local target = path:getTarget()
-			local filter = getall
+			local filter = path._filter
 			local weight = path:getWeight()
 			local svec = Vector( 0, 0, step )
 			local dropheight = path:getDropHeight()
