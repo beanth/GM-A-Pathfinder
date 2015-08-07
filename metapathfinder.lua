@@ -186,7 +186,7 @@ Pathfinder.__index = Pathfinder
 -- returns: Pathfinder object
 
 function Pathfinder:new( v, v2 )
-	local m = { _weight = 10, _gridsize = 16, _step = 18, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end, _filter = function( ent ) return !ent:IsPlayer() end }
+	local m = { _weight = 10, _gridsize = 16, _step = 18, _timeout = 4000, _totalnodes = 1, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end, _filter = function( ent ) return !ent:IsPlayer() end }
 	return metatable( m, Pathfinder )
 end
 
@@ -226,6 +226,15 @@ end
 
 function Pathfinder:setStuckFunc( func )
 	self._stkcallback = func
+	return self
+end
+
+-- function: Sets amount of nodes the pathfinder will create until pathfinder times out
+-- arguments: amount of nodes until timeout (0 for no timeout)
+-- returns: Pathfinder object to allow chaining functions
+
+function Pathfinder:setTimeout( num )
+	self._timeout = num
 	return self
 end
 
@@ -417,6 +426,11 @@ end
 local is_hooked = false
 local running = {}
 
+function Pathfinder:stop()
+	table.remove( running, table.KeyFromValue( self ) )
+	table.Empty( self )
+end
+
 local function UnHookThink()
 	hook.Remove( "Think", "DoPathfinding" )
 	is_hooked = false
@@ -447,6 +461,28 @@ local function HookThink()
 		local accel = math.ceil( 30/count )
 		for u, v in pairs( running ) do
 			local path = v
+			if path._timeout > 0 and path._totalnodes >= path._timeout then
+				local btnode
+				local lowf = math.huge
+				local closed = path:getClosed()
+				for i = 1, #closed do
+					local node = closed[i]
+					if node:getFcost() < lowf then
+						btnode = node
+						lowf = node:getFcost()
+					end
+				end
+				local pathnodes = {}
+				if btnode then
+					while btnode != closed[1] do
+						table.insert( pathnodes, 1, btnode:getPos() )
+						btnode = btnode:getParent()
+					end
+				end
+				path._stkcallback( pathnodes )
+				path:stop()
+				continue
+			end
 			local min = path:getHullMin()
 			local max = path:getHullMax()
 			local mask = path:getMask()
@@ -464,7 +500,6 @@ local function HookThink()
 				local closed = path:getClosed()
 				local parent = open:pop()
 				if !parent then
-					table.remove( running, u )
 					local btnode
 					local lowf = math.huge
 					for i = 1, #closed do
@@ -482,7 +517,7 @@ local function HookThink()
 						end
 					end
 					path._stkcallback( pathnodes )
-					table.Empty( path )
+					path:stop()
 					break
 				end
 				closed[ #closed + 1 ] = parent
@@ -553,6 +588,7 @@ local function HookThink()
 						end
 					end
 					nodecount = nodecount + 1
+					path._totalnodes = path._totalnodes + 1
 					open:push( child )
 					local vec = Vector( floor( pos.x ), floor( pos.y ), floor( pos.z ) )
 					for i = -step, step do
@@ -591,9 +627,4 @@ function Pathfinder:start()
 	self:findWalkablePosition( self._target )
 	table.insert( running, self )
 	if !is_hooked then HookThink() end
-end
-
-function Pathfinder:stop()
-	table.remove( running, table.KeyFromValue( self ) )
-	table.Empty( self )
 end
