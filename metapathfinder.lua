@@ -500,19 +500,19 @@ local function HookThink()
 					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
 					local cost = speccosts[i] or 0
-					if !util.TraceHull( { start = pos + svec, endpos = pos - svec * 2, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then
+					if !util.TraceHull( { start = pos + svec, endpos = pos - svec, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then
 						cost = cost + 100
 					end
 					-- ^ is here so that it doesn't get too close to an edge
 					child:setParent( parent )
-					down = nil
+					down = nil -- saves memory maybe?
 					local p = parent:getParent()
 					if p then
 						local pd = p:getPos() - ppos
 						local d = ppos - pos
 						if pd.x != d.x or pd.y != d.y then cost = cost + 10 end -- penalize direction changes
 					end
-					p = nil
+					p = nil -- saves memory maybe?
 					cost = cost + weight + parent:getGcost()
 					child:setGcost( cost )
 					child:setHcost( euclideanH( pos, target ) )
@@ -536,8 +536,8 @@ local function HookThink()
 						end
 						continue
 					end
-					if bsize > gsize then
-						local retry = { start = pos + svec, endpos = ppos, mask = mask, filter = filter, mins = min, maxs = max - svec }
+					if bsize > gsize then -- skip seeing if the two nodes can see eachother if the gsize is less than bbox size as the check if the node can actually occupy the space should do the same thing
+						local retry = { start = pos, endpos = ppos, mask = mask, filter = filter, mins = min + svec, maxs = max }
 						if util.TraceHull( retry ).Hit then
 							retry.start = pos
 							retry.endpos = ppos + svec
@@ -547,7 +547,7 @@ local function HookThink()
 						end
 					end
 					if math.abs( ppos.z - pos.z ) > step then
-						local retry = { start = ppos, endpos = Vector( pos.x, pos.y, ppos.z ), mask = mask, filter = filter, mins = min, maxs = max - svec }
+						local retry = { start = ppos, endpos = Vector( pos.x, pos.y, ppos.z ), mask = mask, filter = filter, mins = min + svec, maxs = max }
 						if util.TraceHull( retry ).Hit then -- falloff detection
 							continue
 						end
@@ -559,8 +559,8 @@ local function HookThink()
 						local vec = Vector( vec.x, vec.y, vec.z + i )
 						path._taken[ vec.x .. "," .. vec.y .. "," .. vec.z ] = child
 					end
-					vec = path:getTarget()
-					if vec.x != pos.x or vec.y != pos.y or math.abs( vec.z - pos.z ) > step * dropheight then continue end
+					if target.x != pos.x or target.y != pos.y or math.abs( target.z - pos.z ) > step * dropheight then continue end
+					if util.TraceHull( { start = pos, endpos = target, mask = mask, filter = filter, mins = min + svec, maxs = max } ).Hit then continue end -- check if node can actually go to end node
 					local btnode = parent
 					local pathnodes = {}
 					table.insert( pathnodes, target )
