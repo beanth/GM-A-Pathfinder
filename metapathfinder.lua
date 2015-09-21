@@ -186,7 +186,7 @@ Pathfinder.__index = Pathfinder
 -- returns: Pathfinder object
 
 function Pathfinder:new( v, v2 )
-	local m = { _weight = 10, _gridsize = 16, _step = 18, _timeout = 4000, _totalnodes = 1, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) return end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end, _filter = function( ent ) return !ent:IsPlayer() end }
+	local m = { _weight = 10, _gridsize = 16, _step = 18, _timeout = 4000, _totalnodes = 1, _mask = MASK_PLAYERSOLID, _avoidwater = true, _dropheight = 13, _target = v2, _min = Vector( -16, -16, 0 ), _max = Vector( 16, 16, 72 ), _open = Heap():push( Node( v ) ), _vars = {}, _closed = {}, _taken = {}, _fincallback = function( path ) print( "Pathfinder finished" ) end, _stkcallback = function( partpath ) print( "Pathfinder stuck!" ) end, _filter = function( ent ) return !ent:IsPlayer() end }
 	return metatable( m, Pathfinder )
 end
 
@@ -459,8 +459,7 @@ local function HookThink()
 		local count = #running
 		if count < 1 then UnHookThink() return end
 		local accel = math.ceil( 30/count )
-		for u, v in pairs( running ) do
-			local path = v
+		for u, path in pairs( running ) do
 			if path._timeout > 0 and path._totalnodes >= path._timeout then
 				local btnode
 				local lowf = math.huge
@@ -535,7 +534,7 @@ local function HookThink()
 					local child = Node( down.HitPos + Vector( 0, 0, 1 ) )
 					pos = child:getPos()
 					local cost = speccosts[i] or 0
-					if !util.TraceHull( { start = pos + svec, endpos = pos - svec, mins = Vector( min.x, min.y, 0 ) * 0.5, maxs = Vector( max.x, max.y, 0 ) * 0.5, mask = mask, filter = filter } ).Hit then
+					if !util.TraceHull( { start = pos, endpos = pos - svec * 2, mins = Vector( math.min( min.x * 0.5 ), math.min( min.y * 0.5 ), 0 ), maxs = Vector( math.max( max.x * 0.5 ), math.max( max.y * 0.5 ), 0 ), mask = mask, filter = filter } ).Hit then
 						cost = cost + 100
 					end
 					-- ^ is here so that it doesn't get too close to an edge
